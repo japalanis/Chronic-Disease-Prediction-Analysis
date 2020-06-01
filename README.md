@@ -1,1 +1,529 @@
 # Chronic-Disease-Prediction-Analysis
+
+In this project we will be analysing the Disease prediction dataset.We are going to create various disease diagnosis models using Naives Bayes Classifier, K Nearest Neighbor, Support Vector Machine, Random Forest, Gradient Boosting Classifiers in order to predict whether the patient has the specific disease.
+
+#### **Package Loading:**
+
+Load all the required packages:
+
+```{r,results='hide', message=FALSE, warning=FALSE}
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(caret)
+library(klaR)
+library(e1071)
+library(mlbench)
+library(kernlab)
+library(randomForest)
+```
+
+####**Data Loading:**
+
+Let us read the training and testing datasets.
+
+```{r}
+cardio_train<-read.csv("Disease Prediction Training.csv", header=TRUE)
+cardio_test<-read.csv("Disease Prediction Testing.csv", header=TRUE)
+```
+
+#### **Data Exploration:**
+
+```{r,results='hide'}
+str(cardio_train)
+```
+
+```{r,results='hide'}
+summary(cardio_train)
+```
+
+NA values:
+
+```{r,results='hide'}
+sapply(cardio_train, function(x) sum(is.na(x)))
+```
+
+Since there are no NA's in the dataset, we can move further with our analysis.
+
+Removing the duplicate values from the dataset:
+
+```{r}
+cardio_train<-cardio_train[!duplicated(cardio_train),]
+```
+
+Handling the Outliers & Data Visualization:
+
+
+```{r}
+ggplot(cardio_train,aes(x = Gender))+
+  geom_bar(fill="orange",color="brown")+
+  xlab("Gender")+
+  ylab("Count")+
+  ggtitle("Gender Distribution")
+```
+
+
+```{r}
+boxplot(cardio_train$High.Blood.Pressure,
+main = "High Blood Pressure Distribution",
+ylab="High BP",
+border = "brown",
+vertical = TRUE
+)
+```
+
+```{r}
+boxplot(cardio_train$Low.Blood.Pressure,
+main = "Low Blood Pressure Distribution",
+ylab="Low BP",
+border = "brown",
+vertical = TRUE
+)
+```
+
+
+From the above charts,there were many outliers in Low BP and High BP columns with values ranging from negatives to several thousands. I have removed the rows of the Low BP and High BP values that makes no sense by limiting it to particular range.I have taken the Low BP range from 20-190 and High BP range from 60-240.
+```{r}
+cardio_train <- cardio_train[cardio_train$Low.Blood.Pressure >= 20,]
+cardio_train <- cardio_train[cardio_train$Low.Blood.Pressure <= 190,]
+
+cardio_train <- cardio_train[cardio_train$High.Blood.Pressure>= 60,] 
+cardio_train <- cardio_train[cardio_train$High.Blood.Pressure <= 240,]
+
+```
+
+Then, when we look at the minimum age of the person in the dataset it is 29 but then the minimum weight in the data set is found to be 10. So, it is practically not possible to have 29year old person to weigh 10kg. So, I have taken an average range of height and weight to proceed with the analysis to have better model.
+
+```{r}
+cardio_train <-  cardio_train[cardio_train$Height >= 100,]
+cardio_train <-  cardio_train[cardio_train$Weight >= 20,]
+
+```
+
+Converting the values to numeric data type:
+
+```{r}
+cardio_train$Age<-as.numeric(cardio_train$Age)
+cardio_train$Gender<-as.numeric(cardio_train$Gender)
+cardio_train$Height<-as.numeric(cardio_train$Height)
+cardio_train$Weight<-as.numeric(cardio_train$Weight)
+cardio_train$Low.Blood.Pressure<-as.numeric(cardio_train$Low.Blood.Pressure)
+cardio_train$High.Blood.Pressure<-as.numeric(cardio_train$High.Blood.Pressure)
+cardio_train$Smoke<-as.numeric(cardio_train$Smoke)
+cardio_train$Cholesterol<-as.numeric(cardio_train$Cholesterol)
+cardio_train$Glucose<-as.numeric(cardio_train$Glucose)
+cardio_train$Alcohol<-as.numeric(cardio_train$Alcohol)
+cardio_train$Exercise<-as.numeric(cardio_train$Exercise)
+cardio_train$Disease <- as.factor(cardio_train$Disease)
+```
+
+#### **Training and Testing Dataset:**
+
+Let us now split this data into train & test:
+
+```{r}
+train_index <- createDataPartition(cardio_train$Disease, p = 0.8, list = FALSE)
+data_train <- cardio_train[train_index, ]
+data_test <- cardio_train[-train_index, ]
+```
+
+#### **Naive Bayes Classifier**
+Naive Bayes is a supervised machine learning algorithm used for classification of the dataset. This algorithm is based on Bayes theorem that describes the probability of event based on its prior knowledge.
+
+Default Model:
+
+```{r,message=FALSE, warning=FALSE}
+start1 <- Sys.time()
+default_model <- train(Disease ~ ., data = data_train, method = "nb")
+Sys.time() - start1
+
+```
+
+```{r,message=FALSE, warning=FALSE}
+pred <- predict(default_model, data_test)
+```
+
+```{r}
+confusionMatrix(pred, data_test$Disease)
+```
+
+#### **Tuned Model**
+
+Now, let us fine tune the model with additional parameters.
+
+```{r,message=FALSE, warning=FALSE}
+start3 <- Sys.time()
+
+tuned_nb <- train(Disease ~ ., data = data_train, method = "nb",
+                  trControl = trainControl(method = "cv", number=3),
+                  tuneGrid = expand.grid(fL = 1:3, usekernel = T, adjust = 1:3))
+
+Sys.time() - start3
+
+```
+
+Predicting the Disease on test dataset:
+
+```{r,message=FALSE, warning=FALSE}
+predict_tuned_nb<- predict(tuned_nb, newdata = data_test, type = "raw")
+```
+
+Calculating the accuracy of the model:
+
+```{r,message=FALSE, warning=FALSE}
+confusionMatrix(predict_tuned_nb, data_test$Disease)
+```
+
+#### **K-Nearest Neighbours**
+K-Nearest Neighbours is one of the most basic yet essential classification algorithms in Machine Learning. It belongs to the supervised learning domain and finds intense application in pattern recognition, data mining and intrusion detection.
+
+It is widely disposable in real-life scenarios since it is non-parametric, meaning, it does not make any underlying assumptions about the distribution of data (as opposed to other algorithms such as GMM, which assume a Gaussian distribution of the given data).
+
+Default Model:
+
+```{r,message=FALSE, warning=FALSE}
+model_knn1 <- train(Disease ~ ., data = data_train, method = "knn")
+```
+
+```{r,message=FALSE, warning=FALSE}
+predict_knn1 <- predict(model_knn1, newdata = data_test)
+```
+
+```{r,message=FALSE, warning=FALSE}
+confusionMatrix(predict_knn1, data_test$Disease)
+```
+
+Model Training:
+
+```{r,message=FALSE, warning=FALSE}
+start1 <- Sys.time()
+model_knn2 <- train(Disease ~ ., data = data_train, method = "knn",
+                    tuneGrid = data.frame(k = seq(1, 25)),
+                    trControl = trainControl(method = "repeatedcv",
+                                             number = 3, repeats = 3))
+Sys.time() - start1
+
+```
+Predicting the disease on the testing data set:
+
+```{r,message=FALSE, warning=FALSE}
+predict_knn2 <- predict(model_knn2, newdata = data_test, type = "raw")
+
+```
+
+Confusion Matrix for checking accuracy:
+
+```{r,message=FALSE, warning=FALSE}
+confusionMatrix(predict_knn2, data_test$Disease)
+```
+
+#### **Support Vector Machine**
+A Support Vector Machine (SVM) is a supervised machine learning algorithm that can be employed for both classification and regression purposes. SVMs are more commonly used in classification problems. So, lets go ahead and train the model on the trianing data:
+
+Linear Model:
+
+```{r,message=FALSE, warning=FALSE}
+start1 <- Sys.time()
+model_svm_linear <- train(Disease ~ ., data = data_train,
+                          method = "svmLinear",
+                          preProcess = c("center", "scale"),
+                          trControl = trainControl(method = "cv", number = 3),
+                          tuneGrid = expand.grid(C = seq(0, 1, 0.05)))
+Sys.time()-start1
+
+```
+Lets have a look at the model:
+
+```{r}
+model_svm_linear
+```
+
+Lets predict the disease on test data set
+
+```{r,message=FALSE, warning=FALSE}
+predict_svm_linear <- predict(model_svm_linear, newdata = data_test)
+```
+
+Checking the accuracy of the model
+
+```{r,message=FALSE, warning=FALSE}
+confusionMatrix(predict_svm_linear, data_test$Disease)
+```
+
+```{r}
+plot(model_svm_linear)
+```
+
+NON LINEAR MODEL:
+
+```{r,message=FALSE, warning=FALSE}
+model_svm_rbf <- ksvm(Disease ~ ., data = data_train,
+                       preProcess = c("center", "scale"),
+                       tuneGrid = expand.grid(sigma = seq(0, 1, 0.1),
+                                              C = seq(0, 1, 0.1)),
+                       method = "svmRadial",
+                       trControl = trainControl(method = "cv",
+                                                number = 3))
+```
+
+Lets predict the disease on test data set
+
+```{r,message=FALSE, warning=FALSE}
+predict_svm_rbf <- predict(model_svm_rbf, newdata = data_test)
+```
+
+Checking the accuracy of the model
+```{r,message=FALSE, warning=FALSE}
+confusionMatrix(predict_svm_rbf, data_test$Disease)
+```
+
+#### **Random Forest**
+Random Forest algorithm can be used for both regression and classification problems. Two methods for tuning the model for, 1. Random Search and 2. Grid Search
+
+Grid Search:
+In grid search the model is evaluated with all the combinations that are passed in the function, using cross-validation
+
+Random Search:
+Unlike grid search, random search will not evaluate all the combinations of hyperparameters, instead a random combination is chosen at every iteration.
+
+For tuning, let us use grid search.
+
+Default setting:
+
+```{r,message=FALSE, warning=FALSE}
+trControl <- trainControl(method = "cv",
+                          number = 3,
+                          search = "grid")
+```
+
+```{r,message=FALSE, warning=FALSE}
+set.seed(1234)
+default_rf_model <- train(Disease~.,
+                          data = data_train,
+                          method = "rf",
+                          metric = "Accuracy",
+                          trControl = trControl)
+```
+
+The algorithm has tested 3 values of mtry: 2,6,11. Accuracy is higher when mtry was 2.
+
+Let us test the values of mtry from 1 to 10
+
+```{r,message=FALSE, warning=FALSE}
+set.seed(1234)
+tuneGrid <- expand.grid(.mtry = c(1:10))
+rf_mtry <- train(Disease~.,
+                 data = data_train,
+                 method = "rf",
+                 metric = "Accuracy",
+                 tuneGrid = tuneGrid,
+                 trControl = trControl,
+                 importance = TRUE,
+                 nodesize = 25,
+                 ntree = 350)
+                 
+```
+
+mtry (between values of 1 and 10) with the best accuracy is chosen.
+
+Let us store the best value of mtry in best_mtry
+
+```{r}
+best_mtry <- rf_mtry$bestTune$mtry 
+```
+
+The next step is to search for the best maxnodes.
+
+```{r,message=FALSE, warning=FALSE}
+store_maxnode <- list()
+tuneGrid <- expand.grid(.mtry = best_mtry)
+for (maxnodes in c(20: 30)) {
+  set.seed(1234)
+  rf_maxnode <- train(Disease~.,
+                      data = data_train,
+                      method = "rf",
+                      metric = "Accuracy",
+                      tuneGrid = tuneGrid,
+                      trControl = trControl,
+                      importance = TRUE,
+                      nodesize = 25,
+                      maxnodes = maxnodes,
+                      ntree = 350)
+  key <- toString(maxnodes)
+  store_maxnode[[key]] <- rf_maxnode
+}
+results_node <- resamples(store_maxnode)
+summary(results_node)
+
+
+```
+
+The maxnode with highest accuracy score is chosen
+
+Now, let us tune the number of trees.
+
+```{r,message=FALSE, warning=FALSE}
+store_maxtrees <- list()
+for (ntree in c(250, 300, 350, 400, 450, 500, 550, 600, 800, 1000, 2000)) {
+  set.seed(5678)
+  rf_maxtrees <- train(Disease~.,
+                       data = data_train,
+                       method = "rf",
+                       metric = "Accuracy",
+                       tuneGrid = tuneGrid,
+                       trControl = trControl,
+                       importance = TRUE,
+                       nodesize = 25,
+                       maxnodes = 24,
+                       ntree = ntree)
+  key <- toString(ntree)
+  store_maxtrees[[key]] <- rf_maxtrees
+}
+results_tree <- resamples(store_maxtrees)
+summary(results_tree)
+```
+
+Let us train the random forest model with the parameters.
+
+```{r,message=FALSE, warning=FALSE}
+fit_rf <- train(Disease~.,
+                data_train,
+                method = "rf",
+                metric = "Accuracy",
+                tuneGrid = tuneGrid,
+                trControl = trControl,
+                importance = TRUE,
+                nodesize = 25,
+                ntree = 350,
+                maxnodes = 30)
+
+```
+
+Let us predict the disease on test data set
+
+```{r,message=FALSE, warning=FALSE}
+prediction <-predict(fit_rf, data_test)
+```
+
+Checking for the accuracy
+
+```{r,message=FALSE, warning=FALSE}
+confusionMatrix(prediction, data_test$Disease)
+```
+
+Now, lets check for the variables that contributes more for the model.
+
+```{r,message=FALSE, warning=FALSE}
+varimp_rf <- varImp(fit_rf)
+varimp_rf
+```
+
+#### **Gradient Boosting Machine**
+
+GBM is a machine learning technique for regression and classification problems. It builds the model in a stage-wise fashion like other boosting methods do, and it generalizes them by allowing optimization of an arbitrary differentiable loss function.
+
+```{r,results='hide',message=FALSE, warning=FALSE}
+model_gbm <- train(Disease ~ ., data = data_train, method = "gbm")
+
+```
+
+Let us predict the disease on test data set
+
+```{r,message=FALSE, warning=FALSE}
+prediction_gbm <-predict(model_gbm, data_test)
+```
+
+Let us check the accuracy of the model
+
+```{r,message=FALSE, warning=FALSE}
+confusionMatrix(prediction_gbm, data_test$Disease)
+```
+
+Model Training:
+```{r,message=FALSE, warning=FALSE}
+set.seed(825)
+gbmFit1 <- train(Disease ~ ., data = data_train, 
+                 method = "gbm", 
+                 trControl = trainControl(method = "cv", number = 3),
+                 verbose = FALSE)
+gbmFit1
+```
+
+Lets predict the disease
+
+```{r,message=FALSE, warning=FALSE}
+prediction_gbm_tuned <-predict(gbmFit1, data_test)
+```
+
+Check for accuracy
+
+```{r,message=FALSE, warning=FALSE}
+confusionMatrix(prediction_gbm_tuned, data_test$Disease)
+```
+
+Lets compare the model outputs
+
+```{r}
+model_comparison <- resamples(list(NB=tuned_nb,svm=model_svm_linear, rf=fit_rf, gbm=gbmFit1))
+summary(model_comparison)
+```
+
+From the above observartion, it is observed that SVM Non linear model,gradient boosting model and Rain forest model has the highest accuracy of 0.7292, 0.7292,0.7273 respectively. Though, the time taken for running each model varied, these three models are tuned with the hyperparameters that gave the accuracy that are almost close around 73%.
+
+##### **Testing Data Exploration**
+
+```{r, results='hide'}
+sapply(cardio_test, function(x) sum(is.na(x)))
+cardio_test<-cardio_test[!duplicated(cardio_test),]
+cardio_test<- cardio_test[cardio_test$Low.Blood.Pressure >= 20,]
+cardio_test <-  cardio_test[cardio_test$Low.Blood.Pressure <= 190,]
+cardio_test <-  cardio_test[cardio_test$High.Blood.Pressure>= 60,] 
+cardio_test <-  cardio_test[cardio_test$High.Blood.Pressure <= 240,]
+cardio_test <-  cardio_test[cardio_test$Height >= 100,]
+cardio_test <-  cardio_test[cardio_test$Weight >= 20,]
+```
+
+```{r}
+cardio_test$Weight<-as.numeric(cardio_test$Weight)
+cardio_test$Age<-as.numeric(cardio_test$Age)
+cardio_test$Gender<-as.numeric(cardio_test$Gender)
+cardio_test$Cholesterol<-as.numeric(cardio_test$Cholesterol)
+cardio_test$Glucose<-as.numeric(cardio_test$Glucose)
+cardio_test$Height<-as.numeric(cardio_test$Height)
+cardio_test$Low.Blood.Pressure<-as.numeric(cardio_test$Low.Blood.Pressure)
+cardio_test$High.Blood.Pressure<-as.numeric(cardio_test$High.Blood.Pressure)
+cardio_test$Smoke<-as.numeric(cardio_test$Smoke)
+cardio_test$Alcohol<-as.numeric(cardio_test$Alcohol)
+cardio_test$Exercise<-as.numeric(cardio_test$Exercise)
+cardio_test <- cardio_test [-c(1)]
+```
+
+Finally, once the testing data set is ready, lets run the models on the testing data set for predicting the disease.
+
+```{r,eval=TRUE, results='hide',message=FALSE, warning=FALSE}
+
+NB <- predict(tuned_nb, newdata = cardio_test)
+KNN<-predict(model_knn2, newdata = cardio_test)
+SVM_linear<-predict(model_svm_linear, newdata = cardio_test)
+SVM_nonlinear<-predict(model_svm_rbf, newdata = cardio_test)
+RF<-predict(fit_rf, newdata = cardio_test)
+GBM<-predict(gbmFit1, newdata = cardio_test)
+```
+
+Now lets create a data frame in which we can store the prediction of the each model and also include an ID column.
+
+```{r,results='hide',message=FALSE, warning=FALSE}
+
+finaldisp<- data.frame(NB=NB,KNN=KNN,SVM_Linear=SVM_linear,
+                          SVM_NonLinear=SVM_nonlinear,RF=RF,GBM=GBM)
+finaldisp["ID"]<-seq.int(nrow(finaldisp))
+
+```
+
+
+```{r}
+write.csv(finaldisp, file="D:/Syracuse/Semester 2/Data Analytics/HW03/finaldisp.csv",
+          row.names=FALSE)
+```
